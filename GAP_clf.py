@@ -23,7 +23,7 @@ import numpy as np
 #from models import ResnetGenerator, weights_init
 # from material.models.generators import ResnetGenerator, weights_init
 
-from data import get_training_set, get_test_set
+from data import CustomDataset,ImageFolder
 
 # Custom Code for Generator
 import json 
@@ -43,8 +43,8 @@ gan_conf = dict2clsattr(train_config,model_config)
 
 # Training settings
 parser = argparse.ArgumentParser(description='generative adversarial perturbations')
-parser.add_argument('--imagenetTrain', type=str, default='/nfs01/data/imagenet-original/ILSVRC2012_img_train_caffemapping', help='ImageNet train root')
-parser.add_argument('--imagenetVal', type=str, default='/nfs01/data/imagenet-original/ILSVRC2012_img_val_caffemapping', help='ImageNet val root')
+parser.add_argument('--imagenetTrain', type=str, default='/train', help='ImageNet train root')
+parser.add_argument('--imagenetVal', type=str, default='/valid', help='ImageNet val root')
 parser.add_argument('--batchSize', type=int, default=30, help='training batch size')
 parser.add_argument('--testBatchSize', type=int, default=16, help='testing batch size')
 parser.add_argument('--nEpochs', type=int, default=10, help='number of epochs to train for')
@@ -119,10 +119,12 @@ data_transform = transforms.Compose([
 print('===> Loading datasets')
 
 if opt.mode == 'train':
-    train_set = torchvision.datasets.ImageFolder(root = opt.imagenetTrain, transform = data_transform)
+    # train_set = torchvision.datasets.ImageFolder(root = opt.imagenetTrain, transform = data_transform)
+    train_set =  ImageFolder(root='ILSVRC/train',transform=data_transform) # ChangedHere
     training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
 
-test_set = torchvision.datasets.ImageFolder(root = opt.imagenetVal, transform = data_transform)
+# test_set = torchvision.datasets.ImageFolder(root = opt.imagenetVal, transform = data_transform)
+test_set = CustomDataset(subset='valid',root_dir='ILSVRC',transform=preprocess) #ChangedHere
 testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=True)
 
 if opt.foolmodel == 'incv3':
@@ -132,7 +134,7 @@ elif opt.foolmodel == 'vgg16':
 elif opt.foolmodel == 'vgg19':
     pretrained_clf = torchvision.models.vgg19(pretrained=True)
 
-device = torch.device((gpulist[0]) # Might need to Fix for Multi GPU training
+device = torch.device((gpulist[0])) # Might need to Fix for Multi GPU training
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 pretrained_clf = pretrained_clf.to(device)

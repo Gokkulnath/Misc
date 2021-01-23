@@ -124,9 +124,10 @@ if opt.mode == 'train':
     training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
 
 # test_set = torchvision.datasets.ImageFolder(root = opt.imagenetVal, transform = data_transform)
-test_set = CustomDataset(subset='valid',root_dir='ILSVRC',transform=preprocess) #ChangedHere
+test_set = CustomDataset(subset='valid',root_dir='ILSVRC',transform=data_transform) #ChangedHere
 testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=True)
 
+print("Dataset Validation Done")
 if opt.foolmodel == 'incv3':
     pretrained_clf = torchvision.models.inception_v3(pretrained=True)
 elif opt.foolmodel == 'vgg16':

@@ -21,8 +21,24 @@ import numpy as np
 
 # Custom 
 #from models import ResnetGenerator, weights_init
-from material.models.generators import ResnetGenerator, weights_init
+# from material.models.generators import ResnetGenerator, weights_init
+
 from data import get_training_set, get_test_set
+
+# Custom Code for Generator
+import json 
+from models.resnet import Generator
+from utils.misc import dict2clsattr
+
+def read_config(config_path):
+    with open(config_path,'r') as f:
+        conf =json.load(f)
+    return conf
+
+train_config = read_config('temp.json')
+model_config = {}
+
+gan_conf = dict2clsattr(train_config,model_config)
 
 
 # Training settings
@@ -131,7 +147,9 @@ print('===> Building model')
 
 if not opt.explicit_U:
     # will use model paralellism if more than one gpu specified
-    netG = ResnetGenerator(3, 3, opt.ngf, norm_type='batch', act_type='relu', gpu_ids=gpulist)
+    netG = Generator(gan_conf.z_dim, gan_conf.shared_dim, gan_conf.img_size, gan_conf.g_conv_dim, gan_conf.g_spectral_norm, gan_conf.attention,
+                        gan_conf.attention_after_nth_gen_block, gan_conf.activation_fn, gan_conf.conditional_strategy, gan_conf.num_classes,
+                        gan_conf.g_init, gan_conf.G_depth, mixed_precision=False)
 
     # resume from checkpoint if specified
     if opt.checkpoint:

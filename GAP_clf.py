@@ -23,22 +23,39 @@ import numpy as np
 #from models import ResnetGenerator, weights_init
 # from material.models.generators import ResnetGenerator, weights_init
 
-from data import CustomDataset,ImageFolder
-
 # Custom Code for Generator
 import json 
 from models.resnet import Generator
 from utils.misc import dict2clsattr
+
+# Dataset Setup
+from data import CustomDataset,ImageFolder
 
 def read_config(config_path):
     with open(config_path,'r') as f:
         conf =json.load(f)
     return conf
 
+# def weights_init(m, act_type='relu'):
+#     classname = m.__class__.__name__
+#     if classname.find('Conv') != -1:
+#         if act_type == 'selu':
+#             n = float(m.in_channels * m.kernel_size[0] * m.kernel_size[1])
+#             m.weight.data.normal_(0.0, 1.0 / math.sqrt(n))
+#         else:
+#             m.weight.data.normal_(0.0, 0.02)        
+#         if hasattr(m.bias, 'data'):
+#             m.bias.data.fill_(0)
+#     elif classname.find('BatchNorm2d') != -1:
+#         m.weight.data.normal_(1.0, 0.02)
+#         m.bias.data.fill_(0)
+
 train_config = read_config('temp.json')
 model_config = {}
 
 gan_conf = dict2clsattr(train_config,model_config)
+
+
 
 
 # Training settings
@@ -102,7 +119,7 @@ print('Running with n_gpu: ', n_gpu)
 
 # define normalization means and stddevs
 model_dimension = 299 if opt.foolmodel == 'incv3' else 256
-center_crop = 299 if opt.foolmodel == 'incv3' else 224
+center_crop = 299 if opt.foolmodel == 'incv3' else 224 # cropped Image Dimensions
 
 mean_arr = [0.485, 0.456, 0.406]
 stddev_arr = [0.229, 0.224, 0.225]
@@ -135,16 +152,17 @@ elif opt.foolmodel == 'vgg16':
 elif opt.foolmodel == 'vgg19':
     pretrained_clf = torchvision.models.vgg19(pretrained=True)
 
-device = torch.device((gpulist[0])) # Might need to Fix for Multi GPU training
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device((gpulist[0])) # Might need to Fix for Multi GPU training
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 pretrained_clf = pretrained_clf.to(device)
 
 pretrained_clf.eval()
-pretrained_clf.volatile = True  # TODO : Why use Volatile ? Save Backprop Gradients ?
+# pretrained_clf.volatile = True  # TODO : Why use Volatile ? Save Backprop Gradients ?
+# Volatile Deprecated
 
 # magnitude
-mag_in = opt.mag_in # Linf Magnitude for perturbations aka Max allowed Perturbation in a pixel
+mag_in = 10 # opt.mag_in # Linf Magnitude for perturbations aka Max allowed Perturbation in a pixel
 
 print('===> Building model')
 
@@ -153,7 +171,9 @@ if not opt.explicit_U:
     netG = Generator(gan_conf.z_dim, gan_conf.shared_dim, gan_conf.img_size, gan_conf.g_conv_dim, gan_conf.g_spectral_norm, gan_conf.attention,
                         gan_conf.attention_after_nth_gen_block, gan_conf.activation_fn, gan_conf.conditional_strategy, gan_conf.num_classes,
                         gan_conf.g_init, gan_conf.G_depth, mixed_precision=False)
-
+    print("Generator Arch: ")
+    print(netG)
+    print("<","="*8,">")
     # resume from checkpoint if specified
     if opt.checkpoint:
         if os.path.isfile(opt.checkpoint):
@@ -162,9 +182,9 @@ if not opt.explicit_U:
             print("=> loaded checkpoint '{}'".format(opt.checkpoint))
         else:
             print("=> no checkpoint found at '{}'".format(opt.checkpoint))
-            netG.apply(weights_init)
-    else:
-        netG.apply(weights_init)
+            # netG.apply(weights_init)
+    # else:
+    #     netG.apply(weights_init)
 
     # setup optimizer
     if opt.optimizer == 'adam':
@@ -172,12 +192,12 @@ if not opt.explicit_U:
     elif opt.optimizer == 'sgd':
         optimizerG = optim.SGD(netG.parameters(), lr=opt.lr, momentum=0.9)
 
-    criterion_pre = nn.CrossEntropyLoss()
-    criterion_pre = criterion_pre.to(device)
-
+    criterion_pre = nn.CrossEntropyLoss().to(device)
+    
     # fixed noise for universal perturbation
     if opt.perturbation_type == 'universal':
-        noise_data = np.random.uniform(0, 255, center_crop * center_crop * 3)
+        # noise_data = np.random.uniform(0, 255, center_crop * center_crop * 3) # 1d Array
+        noise_data = np.random.uniform(0, 255, 128) # 1d Array
         if opt.checkpoint:
             if opt.path_to_U_noise:
                 noise_data = np.loadtxt(opt.path_to_U_noise)
@@ -186,13 +206,13 @@ if not opt.explicit_U:
                 noise_data = np.loadtxt(opt.expname + '/U_input_noise.txt')
         else:
             np.savetxt(opt.expname + '/U_input_noise.txt', noise_data)
-        im_noise = np.reshape(noise_data, (3, center_crop, center_crop))
-        im_noise = im_noise[np.newaxis, :, :, :]
-        im_noise_tr = np.tile(im_noise, (opt.batchSize, 1, 1, 1))
-        noise_tr = torch.from_numpy(im_noise_tr).type(torch.FloatTensor).to(device)
+        # im_noise = np.reshape(noise_data, (3, center_crop, center_crop)) # Reshape to C X H X W  array
+        noise_data = noise_data[np.newaxis, :]
+        noise_data_tr = np.tile(noise_data, (opt.batchSize, 1))
+        noise_tr = torch.from_numpy(noise_data_tr).type(torch.FloatTensor).to(device)
 
-        im_noise_te = np.tile(im_noise, (opt.testBatchSize, 1, 1, 1))
-        noise_te = torch.from_numpy(im_noise_te).type(torch.FloatTensor).to(device)
+        noise_data_te = np.tile(noise_data, (opt.testBatchSize, 1))
+        noise_te = torch.from_numpy(noise_data_te).type(torch.FloatTensor).to(device)
 
 def train(epoch):
     netG.train()
@@ -222,12 +242,14 @@ def train(epoch):
 
         ## generate per image perturbation from fixed noise
         if opt.perturbation_type == 'universal':
-            delta_im = netG(noise_tr)
+            delta_im = netG(noise_tr,target_label)
         else:
             delta_im = netG(image)
 
         delta_im = normalize_and_scale(delta_im, 'train')
-
+        print(delta_im.shape)
+        import pdb 
+        pdb.set_trace()
         netG.zero_grad()
 
         recons = torch.add(image.to(device), delta_im.to(device))
